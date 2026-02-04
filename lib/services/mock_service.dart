@@ -13,6 +13,7 @@ class MockService {
   static final List<Todo> _mockDatabase = [
     Todo(
       id: '1',
+      userId: 'mock_user',
       title: '学习 Flutter 基础',
       description: '掌握 Widget, Layout, State 的基本概念',
       isCompleted: true,
@@ -20,6 +21,7 @@ class MockService {
     ),
     Todo(
       id: '2',
+      userId: 'mock_user',
       title: '实战企业级 Demo',
       description: '学习目录结构、MVVM 分层、异步编程',
       isCompleted: false,

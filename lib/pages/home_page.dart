@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
-import '../services/mock_service.dart';
-import '../models/todo.dart';
+import 'package:provider/provider.dart';
+import '../providers/todo_provider.dart';
+import '../providers/auth_provider.dart';
+import '../providers/theme_provider.dart';
 import '../widgets/todo_list_tile.dart';
+import '../widgets/todo_search_delegate.dart';
 import 'form_page.dart';
-
-// -------------------------------------------------------------------------
-// 知识点：综合页面布局 & 异步 UI 更新
-// -------------------------------------------------------------------------
+import 'statistics_page.dart';
+import 'check_in_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -16,137 +17,163 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  // 列表数据
-  List<Todo> _todos = [];
-  // 是否正在加载
-  bool _isLoading = true;
+  int _currentIndex = 0;
+
+  final List<Widget> _pages = [
+    const TodoListView(),    // 任务列表
+    const StatisticsPage(),  // 统计
+    const CheckInPage(),     // 打卡
+  ];
 
   @override
-  void initState() {
-    super.initState();
-    _loadData(); // 初始化时加载数据
-  }
+  Widget build(BuildContext context) {
+    final auth = Provider.of<AuthProvider>(context, listen: false);
+    final themeProvider = Provider.of<ThemeProvider>(context);
 
-  // 知识点：异步加载数据
-  Future<void> _loadData() async {
-    setState(() => _isLoading = true);
-    try {
-      final todos = await MockService.getTodos();
-      setState(() {
-        _todos = todos;
-        _isLoading = false;
-      });
-    } catch (e) {
-      setState(() => _isLoading = false);
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('加载失败: $e')));
-    }
-  }
-
-  // 切换任务状态
-  Future<void> _toggleTodo(String id) async {
-    // 知识点：乐观更新 (Optimistic UI Update)
-    // 先在界面上更新状态，感觉很快，然后再发送网络请求。
-    // 如果请求失败，再回滚状态（这里简化处理，只演示基本逻辑）
-    await MockService.toggleTodoStatus(id);
-    _loadData(); // 重新加载列表（或者也可以直接修改本地 list）
-  }
-
-  // 删除任务
-  Future<void> _deleteTodo(String id) async {
-    // 知识点：弹出确认对话框
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('确认删除?'),
-        content: const Text('删除后无法恢复。'),
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(['我的待办', '数据统计', '每日打卡'][_currentIndex]),
         actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('取消'),
+          // 搜索 (仅首页)
+          if (_currentIndex == 0)
+            IconButton(
+              icon: const Icon(Icons.search),
+              onPressed: () {
+                showSearch(context: context, delegate: TodoSearchDelegate());
+              },
+            ),
+          
+          // 主题切换
+          IconButton(
+            tooltip: '切换主题',
+            icon: Icon(themeProvider.currentStyle == AppThemeStyle.simple 
+              ? Icons.style_outlined // 简洁
+              : Icons.style          // 丰富
+            ),
+            onPressed: () {
+              themeProvider.toggleTheme();
+            },
           ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('删除', style: TextStyle(color: Colors.red)),
+
+          // 退出登录
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () {
+              showDialog(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: const Text('退出登录'),
+                  content: const Text('确定要退出当前账号吗？'),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.pop(ctx),
+                      child: const Text('取消'),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.pop(ctx);
+                        auth.logout();
+                      },
+                      child: const Text('退出', style: TextStyle(color: Colors.red)),
+                    ),
+                  ],
+                ),
+              );
+            },
+          )
+        ],
+      ),
+      body: _pages[_currentIndex],
+      bottomNavigationBar: NavigationBar(
+        selectedIndex: _currentIndex,
+        onDestinationSelected: (index) {
+          setState(() => _currentIndex = index);
+        },
+        destinations: const [
+          NavigationDestination(
+            icon: Icon(Icons.list),
+            label: '列表',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.pie_chart),
+            label: '统计',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.verified_user),
+            label: '打卡',
           ),
         ],
       ),
+      floatingActionButton: _currentIndex == 0 
+          ? FloatingActionButton(
+              onPressed: () async {
+                final result = await Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => const FormPage()),
+                );
+                if (result == true) {
+                   // 自动刷新由 Provider 监听处理
+                }
+              },
+              child: const Icon(Icons.add),
+            )
+          : null,
     );
-
-    if (confirm == true) {
-      await MockService.deleteTodo(id);
-      _loadData();
-      if (!mounted) return;
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('删除成功')));
-    }
   }
+}
 
-  // 跳转到添加页面
-  void _navigateToAddPage() async {
-    // 知识点：等待页面返回结果
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (context) => const FormPage()),
+class TodoListView extends StatefulWidget {
+  const TodoListView({super.key});
+
+  @override
+  State<TodoListView> createState() => _TodoListViewState();
+}
+
+class _TodoListViewState extends State<TodoListView> {
+  @override
+  void initState() {
+    super.initState();
+    // 初始加载
+    Future.microtask(() => 
+      Provider.of<TodoProvider>(context, listen: false).loadTodos()
     );
-
-    // 如果返回 true，说明添加成功，刷新列表
-    if (result == true) {
-      _loadData();
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('添加成功')));
-    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('Flutter 企业级实战'),
-        actions: [
-          IconButton(icon: const Icon(Icons.refresh), onPressed: _loadData),
-        ],
-      ),
-      // 知识点：处理不同的 UI 状态 (Loading, Empty, Data)
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _todos.isEmpty
-          ? Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  const Icon(Icons.inbox, size: 64, color: Colors.grey),
-                  const SizedBox(height: 16),
-                  Text(
-                    '没有任务，去添加一个吧！',
-                    style: Theme.of(context).textTheme.bodyLarge,
-                  ),
-                ],
-              ),
-            )
-          : ListView.builder(
-              // 知识点：ListView.builder 性能优化
-              // 仅渲染屏幕可见的元素
-              padding: const EdgeInsets.only(bottom: 80), // 底部留白给 FAB
-              itemCount: _todos.length,
-              itemBuilder: (context, index) {
-                final todo = _todos[index];
-                return TodoListTile(
-                  todo: todo,
-                  onToggle: () => _toggleTodo(todo.id),
-                  onDelete: () => _deleteTodo(todo.id),
-                );
-              },
+    return Consumer<TodoProvider>(
+      builder: (context, provider, child) {
+        if (provider.isLoading) {
+          return const Center(child: CircularProgressIndicator());
+        }
+
+        if (provider.todos.isEmpty) {
+          return Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.inbox, size: 64, color: Colors.grey[300]),
+                const SizedBox(height: 16),
+                Text('没有待办事项', style: TextStyle(color: Colors.grey[600])),
+              ],
             ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _navigateToAddPage,
-        label: const Text('新建任务'),
-        icon: const Icon(Icons.add),
-      ),
+          );
+        }
+
+        return ListView.builder(
+          padding: const EdgeInsets.only(bottom: 80),
+          itemCount: provider.todos.length,
+          itemBuilder: (context, index) {
+            final todo = provider.todos[index];
+            return TodoListTile(
+              key: ValueKey(todo.id),
+              todo: todo,
+              onToggle: () => provider.toggleTodo(todo.id),
+              onDelete: () => provider.deleteTodo(todo.id),
+            );
+          },
+        );
+      },
     );
   }
 }

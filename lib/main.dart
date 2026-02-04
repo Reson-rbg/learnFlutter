@@ -1,13 +1,23 @@
 import 'package:flutter/material.dart';
-import 'theme/app_theme.dart';
+import 'package:provider/provider.dart';
+import 'providers/todo_provider.dart';
+import 'providers/auth_provider.dart';
+import 'providers/theme_provider.dart';
+import 'services/database_service.dart';
+import 'services/notification_service.dart';
 import 'pages/home_page.dart';
+import 'pages/auth_page.dart';
 
-// -------------------------------------------------------------------------
-// 入口文件：Main
-// -------------------------------------------------------------------------
-// 程序的入口
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // 初始化数据库服务
+  await DatabaseService().database; 
 
-void main() {
+  // 初始化通知服务
+  await NotificationService().init();
+  await NotificationService().requestPermissions(); 
+
   runApp(const MyApp());
 }
 
@@ -16,18 +26,35 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      // 1. 设置应用标题
-      title: 'Flutter Advanced Demo',
-
-      // 2. 去除右上角 DEBUG 标签
-      debugShowCheckedModeBanner: false,
-
-      // 3. 应用自定义主题
-      theme: AppTheme.lightTheme,
-
-      // 4. 设置首页
-      home: const HomePage(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => ThemeProvider()),
+        
+        ChangeNotifierProxyProvider<AuthProvider, TodoProvider>(
+          create: (_) => TodoProvider(null),
+          update: (context, auth, previousTodoProvider) {
+            return previousTodoProvider != null
+                ? (previousTodoProvider..updateUserId(auth.userId))
+                : TodoProvider(auth.userId);
+          },
+        ),
+      ],
+      // 监听 ThemeProvider
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, child) {
+          return MaterialApp(
+            title: 'Flutter Advanced Todo',
+            theme: themeProvider.currentThemeData, // 使用动态主题
+            debugShowCheckedModeBanner: false,
+            home: Consumer<AuthProvider>(
+              builder: (context, auth, _) {
+                return auth.isLoggedIn ? const HomePage() : const AuthPage();
+              },
+            ),
+          );
+        },
+      ),
     );
   }
 }

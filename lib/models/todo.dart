@@ -1,55 +1,80 @@
 // -------------------------------------------------------------------------
 // 知识点：数据模型 (Model)
 // -------------------------------------------------------------------------
-// 在企业级开发中，我们通常会定义专门的类来表示数据。
-// 这有助于代码的类型安全和逻辑解耦。
 
 class Todo {
   final String id;
+  final String userId; // 新增：用户ID
   final String title;
   final String description;
   final bool isCompleted;
   final DateTime createdAt;
+  final DateTime? reminderTime;
 
   // 构造函数
   Todo({
     required this.id,
+    required this.userId, // 必填
     required this.title,
     required this.description,
     this.isCompleted = false,
     required this.createdAt,
+    this.reminderTime,
   });
 
   // -------------------------------------------------------------------------
   // 知识点：命名构造函数与 JSON 序列化
   // -------------------------------------------------------------------------
-  // 模拟从网络请求返回的 JSON 数据转为 Dart 对象
   factory Todo.fromJson(Map<String, dynamic> json) {
     return Todo(
       id: json['id'],
+      userId: json['userId'] ?? '', // 兼容处理，防止为空
       title: json['title'],
       description: json['description'],
-      isCompleted: json['isCompleted'] ?? false,
+      isCompleted: (json['isCompleted'] is int) 
+          ? (json['isCompleted'] == 1) 
+          : (json['isCompleted'] ?? false),
       createdAt: DateTime.parse(json['createdAt']),
+      reminderTime: json['reminderTime'] != null ? DateTime.parse(json['reminderTime']) : null,
     );
   }
 
-  // 知识点：copyWith 模式
-  // Flutter 中通过不可变对象（Immutable）来管理状态是很常见的。
-  // copyWith 用于创建一个新对象，但只修改部分属性。
+  // 兼容数据库操作命名
+  factory Todo.fromMap(Map<String, dynamic> map) => Todo.fromJson(map);
+
+  // copyWith 模式
   Todo copyWith({
     String? id,
+    String? userId,
     String? title,
     String? description,
     bool? isCompleted,
     DateTime? createdAt,
+    DateTime? reminderTime,
   }) {
     return Todo(
       id: id ?? this.id,
+      userId: userId ?? this.userId,
       title: title ?? this.title,
       description: description ?? this.description,
       isCompleted: isCompleted ?? this.isCompleted,
       createdAt: createdAt ?? this.createdAt,
+      reminderTime: reminderTime ?? this.reminderTime,
     );
   }
+
+  // 将对象转换为 JSON (Map)
+  Map<String, dynamic> toJson() {
+    return {
+      'id': id,
+      'userId': userId,
+      'title': title,
+      'description': description,
+      'isCompleted': isCompleted ? 1 : 0, 
+      'createdAt': createdAt.toIso8601String(),
+      'reminderTime': reminderTime?.toIso8601String(),
+    };
+  }
+  
+  Map<String, dynamic> toMap() => toJson();
 }

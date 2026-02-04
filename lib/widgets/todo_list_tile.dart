@@ -43,9 +43,32 @@ class TodoListTile extends StatelessWidget {
             const SizedBox(height: 4),
             Text(todo.description),
             const SizedBox(height: 4),
-            Text(
-              '创建时间: ${todo.createdAt.toString().split('.')[0]}',
-              style: const TextStyle(fontSize: 10, color: Colors.grey),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '创建时间: ${todo.createdAt.toString().split('.')[0]}',
+                  style: const TextStyle(fontSize: 10, color: Colors.grey),
+                ),
+                if (todo.reminderTime != null) ...[
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Icon(Icons.alarm, size: 12, color: todo.isCompleted ? Colors.grey : Colors.redAccent),
+                      const SizedBox(width: 2),
+                      Text(
+                        todo.reminderTime.toString().split('.')[0].substring(0, 16),
+                        style: TextStyle(
+                          fontSize: 10, 
+                          color: todo.isCompleted ? Colors.grey : Colors.redAccent,
+                          fontWeight: FontWeight.bold
+                        ),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                ]
+              ],
             ),
           ],
         ),
