@@ -3,8 +3,11 @@ import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 import 'package:intl/intl.dart';
 import '../models/todo.dart';
+import '../models/task_template.dart';
 import '../providers/todo_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/achievement_provider.dart';
+import '../services/database_service.dart';
 
 class FormPage extends StatefulWidget {
   const FormPage({super.key});
@@ -132,6 +135,14 @@ class _FormPageState extends State<FormPage> {
         ).addTodo(newTodo);
         if (!mounted) return;
         Navigator.pop(context, true);
+
+        // 触发成就检查
+        if (mounted) {
+          final tp = context.read<TodoProvider>();
+          final ap = context.read<AchievementProvider>();
+        final totalCompleted = tp.todos.where((t) => t.isCompleted).length;
+          await ap.checkAndUnlock(totalCompletedTasks: totalCompleted + 1);
+        }
       } catch (e) {
         if (!mounted) return;
         ScaffoldMessenger.of(
@@ -142,10 +153,99 @@ class _FormPageState extends State<FormPage> {
     }
   }
 
+  // ---- 模板功能 ----
+  Future<void> _importFromTemplate() async {
+    final auth = context.read<AuthProvider>();
+    if (auth.userId == null) return;
+    final db = DatabaseService();
+    final templates = await db.getTemplates(auth.userId!);
+    if (!mounted) return;
+    if (templates.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('还没有保存的模板')),
+      );
+      return;
+    }
+    showModalBottomSheet(
+      context: context,
+      builder: (_) => ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: templates.length,
+        itemBuilder: (_, i) {
+          final t = templates[i];
+          return ListTile(
+            leading: const Icon(Icons.description),
+            title: Text(t.title),
+            subtitle: Text(t.tags.isEmpty ? '无标签' : t.tags.join(', ')),
+            onTap: () {
+              setState(() {
+                _titleController.text = t.title;
+                _descController.text = t.description;
+                _selectedTags = List.from(t.tags);
+                _isFocus = t.isFocus;
+              });
+              Navigator.pop(context);
+            },
+          );
+        },
+      ),
+    );
+  }
+
+  Future<void> _saveAsTemplate() async {
+    if (_titleController.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先填写任务标题')),
+      );
+      return;
+    }
+    final auth = context.read<AuthProvider>();
+    if (auth.userId == null) return;
+    final db = DatabaseService();
+    final template = TaskTemplate(
+      id: const Uuid().v4(),
+      userId: auth.userId!,
+      title: _titleController.text,
+      description: _descController.text,
+      tags: _selectedTags,
+      isFocus: _isFocus,
+      createdAt: DateTime.now(),
+    );
+    try {
+      await db.insertTemplate(template);
+      if (mounted) {
+        context.read<AchievementProvider>().checkAndUnlock(templateCreated: true);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('✅ 已保存为模板')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存模板失败: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('新增任务')),
+      appBar: AppBar(
+        title: const Text('新增任务'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.file_download_outlined),
+            tooltip: '从模板导入',
+            onPressed: _importFromTemplate,
+          ),
+          IconButton(
+            icon: const Icon(Icons.save_outlined),
+            tooltip: '保存为模板',
+            onPressed: _saveAsTemplate,
+          ),
+        ],
+      ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16.0),
         child: Form(
@@ -284,38 +384,7 @@ class _FormPageState extends State<FormPage> {
               const Divider(),
               const SizedBox(height: 8),
 
-              // 6. 提醒时间显示
-              TextFormField(
-                controller: _titleController,
-                decoration: const InputDecoration(
-                  labelText: '任务标题',
-                  hintText: '请输入要做的事情',
-                  prefixIcon: Icon(Icons.title),
-                  border: OutlineInputBorder(),
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) return '标题不能为空';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: _descController,
-                decoration: const InputDecoration(
-                  labelText: '详细描述',
-                  hintText: '描述一下细节...',
-                  prefixIcon: Icon(Icons.description),
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 3,
-                validator: (value) {
-                  if (value == null || value.isEmpty) return '描述也是必填的哦';
-                  return null;
-                },
-              ),
-              const SizedBox(height: 24),
-
-              // 提醒时间选择器
+              // 6. 提醒时间选择器
               ListTile(
                 title: Text(
                   _selectedDate == null

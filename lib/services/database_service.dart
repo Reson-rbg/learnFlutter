@@ -4,6 +4,10 @@ import 'package:http/http.dart' as http;
 import '../models/user.dart';
 import '../models/todo.dart';
 import '../models/check_in.dart';
+import '../models/focus_session.dart';
+import '../models/badge.dart';
+import '../models/task_template.dart';
+import '../models/plaza_event.dart';
 
 // -------------------------------------------------------------------------
 // 知识点：HTTP 服务封装 (替代原 SQLite)
@@ -171,5 +175,140 @@ class DatabaseService {
       return data['hasCheckedIn'] == true;
     }
     return false;
+  }
+
+  // ---- Focus Session Operations ----
+  Future<void> insertFocusSession(FocusSession session) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/focus-sessions'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(session.toMap()),
+    );
+    if (response.statusCode != 201) {
+      throw Exception('保存专注记录失败');
+    }
+  }
+
+  Future<List<FocusSession>> getFocusSessions(String userId) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/focus-sessions?userId=$userId'),
+    );
+    if (response.statusCode == 200) {
+      final List<dynamic> list = jsonDecode(response.body);
+      return list.map((e) => FocusSession.fromMap(e)).toList();
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> getFocusWeeklyStats(String userId) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/focus-sessions/weekly-stats?userId=$userId'),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    return {'totalMinutes': 0, 'sessionCount': 0, 'topTodoId': null};
+  }
+
+  // ---- Badge Operations ----
+  Future<List<UserBadge>> getUserBadges(String userId) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/badges?userId=$userId'),
+    );
+    if (response.statusCode == 200) {
+      final List<dynamic> list = jsonDecode(response.body);
+      return list.map((e) => UserBadge.fromMap(e)).toList();
+    }
+    return [];
+  }
+
+  Future<void> unlockBadge(String userId, String badgeKey) async {
+    await http.post(
+      Uri.parse('$_baseUrl/badges'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'userId': userId, 'badgeKey': badgeKey}),
+    );
+  }
+
+  // ---- Template Operations ----
+  Future<List<TaskTemplate>> getTemplates(String userId) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/templates?userId=$userId'),
+    );
+    if (response.statusCode == 200) {
+      final List<dynamic> list = jsonDecode(response.body);
+      return list.map((e) => TaskTemplate.fromMap(e)).toList();
+    }
+    return [];
+  }
+
+  Future<void> insertTemplate(TaskTemplate template) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/templates'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(template.toMap()),
+    );
+    if (response.statusCode != 201) {
+      throw Exception('创建模板失败');
+    }
+  }
+
+  Future<void> deleteTemplate(String id) async {
+    final response = await http.delete(Uri.parse('$_baseUrl/templates/$id'));
+    if (response.statusCode != 200) {
+      throw Exception('删除模板失败');
+    }
+  }
+
+  // ---- Plaza Operations ----
+  Future<List<PlazaEvent>> getPlazaEvents() async {
+    final response = await http.get(Uri.parse('$_baseUrl/plaza'));
+    if (response.statusCode == 200) {
+      final List<dynamic> list = jsonDecode(response.body);
+      return list.map((e) => PlazaEvent.fromMap(e)).toList();
+    }
+    return [];
+  }
+
+  Future<void> publishPlazaEvent(String userId, String eventType, String eventDescription) async {
+    await http.post(
+      Uri.parse('$_baseUrl/plaza'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'userId': userId,
+        'eventType': eventType,
+        'eventDescription': eventDescription,
+      }),
+    );
+  }
+
+  // ---- Settings Operations ----
+  Future<Map<String, dynamic>> getUserSettings(String userId) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/plaza/settings?userId=$userId'),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    return {'showOnPlaza': 0};
+  }
+
+  Future<void> updateUserSettings(String userId, bool showOnPlaza) async {
+    await http.put(
+      Uri.parse('$_baseUrl/plaza/settings'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'userId': userId, 'showOnPlaza': showOnPlaza}),
+    );
+  }
+
+  // ---- Data Export ----
+  Future<Map<String, dynamic>> exportUserData(String userId) async {
+    final response = await http.get(
+      Uri.parse('$_baseUrl/plaza/export?userId=$userId'),
+    );
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+    throw Exception('数据导出失败');
   }
 }

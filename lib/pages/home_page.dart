@@ -1,13 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/todo_provider.dart';
-import '../providers/auth_provider.dart';
-import '../providers/theme_provider.dart';
 import '../widgets/todo_list_tile.dart';
 import '../widgets/todo_search_delegate.dart';
+import '../widgets/weekly_review_dialog.dart';
 import 'form_page.dart';
 import 'statistics_page.dart';
 import 'check_in_page.dart';
+import 'focus_timer_page.dart';
+import 'plaza_page.dart';
+import 'achievement_page.dart';
+import 'settings_page.dart';
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -21,18 +24,19 @@ class _HomePageState extends State<HomePage> {
 
   final List<Widget> _pages = [
     const TodoListView(), // 任务列表
+    const FocusTimerPage(), // 专注
     const StatisticsPage(), // 统计
     const CheckInPage(), // 打卡
+    const PlazaPage(), // 广场
   ];
+
+  static const _titles = ['我的待办', '专注模式', '数据统计', '每日打卡', '习惯广场'];
 
   @override
   Widget build(BuildContext context) {
-    final auth = Provider.of<AuthProvider>(context, listen: false);
-    final themeProvider = Provider.of<ThemeProvider>(context);
-
     return Scaffold(
       appBar: AppBar(
-        title: Text(['我的待办', '数据统计', '每日打卡'][_currentIndex]),
+        title: Text(_titles[_currentIndex]),
         actions: [
           // 搜索 (仅首页)
           if (_currentIndex == 0)
@@ -43,48 +47,31 @@ class _HomePageState extends State<HomePage> {
               },
             ),
 
-          // 主题切换
+          // 周报
           IconButton(
-            tooltip: '切换主题',
-            icon: Icon(
-              themeProvider.currentStyle == AppThemeStyle.simple
-                  ? Icons
-                        .style_outlined // 简洁
-                  : Icons.style, // 丰富
-            ),
-            onPressed: () {
-              themeProvider.toggleTheme();
-            },
+            icon: const Icon(Icons.insights),
+            tooltip: '本周回顾',
+            onPressed: () => WeeklyReviewDialog.show(context),
           ),
 
-          // 退出登录
+          // 成就
           IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () {
-              showDialog(
-                context: context,
-                builder: (ctx) => AlertDialog(
-                  title: const Text('退出登录'),
-                  content: const Text('确定要退出当前账号吗？'),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(ctx),
-                      child: const Text('取消'),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.pop(ctx);
-                        auth.logout();
-                      },
-                      child: const Text(
-                        '退出',
-                        style: TextStyle(color: Colors.red),
-                      ),
-                    ),
-                  ],
-                ),
-              );
-            },
+            icon: const Icon(Icons.emoji_events_outlined),
+            tooltip: '成就',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const AchievementPage()),
+            ),
+          ),
+
+          // 设置
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: '设置',
+            onPressed: () => Navigator.push(
+              context,
+              MaterialPageRoute(builder: (_) => const SettingsPage()),
+            ),
           ),
         ],
       ),
@@ -95,9 +82,11 @@ class _HomePageState extends State<HomePage> {
           setState(() => _currentIndex = index);
         },
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.list), label: '列表'),
+          NavigationDestination(icon: Icon(Icons.list), label: '待办'),
+          NavigationDestination(icon: Icon(Icons.timer), label: '专注'),
           NavigationDestination(icon: Icon(Icons.pie_chart), label: '统计'),
           NavigationDestination(icon: Icon(Icons.verified_user), label: '打卡'),
+          NavigationDestination(icon: Icon(Icons.public), label: '广场'),
         ],
       ),
       floatingActionButton: _currentIndex == 0

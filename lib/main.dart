@@ -3,7 +3,9 @@ import 'package:provider/provider.dart';
 import 'providers/todo_provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/theme_provider.dart';
-import 'services/database_service.dart';
+import 'providers/focus_provider.dart';
+import 'providers/achievement_provider.dart';
+
 import 'services/notification_service.dart';
 import 'pages/home_page.dart';
 import 'pages/auth_page.dart';
@@ -37,6 +39,24 @@ class MyApp extends StatelessWidget {
             return previousTodoProvider != null
                 ? (previousTodoProvider..updateUserId(auth.userId))
                 : TodoProvider(auth.userId);
+          },
+        ),
+
+        // V2.0 新增 Provider
+        ChangeNotifierProxyProvider<AuthProvider, FocusProvider>(
+          create: (_) => FocusProvider(),
+          update: (context, auth, previous) {
+            final fp = previous ?? FocusProvider();
+            if (auth.userId != null) fp.setUserId(auth.userId!);
+            return fp;
+          },
+        ),
+        ChangeNotifierProxyProvider<AuthProvider, AchievementProvider>(
+          create: (_) => AchievementProvider(),
+          update: (context, auth, previous) {
+            final ap = previous ?? AchievementProvider();
+            if (auth.userId != null) ap.setUserId(auth.userId!);
+            return ap;
           },
         ),
       ],
