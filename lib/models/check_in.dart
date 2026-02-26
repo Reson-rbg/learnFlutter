@@ -7,12 +7,14 @@ class CheckIn {
   final String userId;
   final DateTime checkInTime;
   final String note;
+  final int? mood; // 0: Happy, 1: Neural, 2: Sad
 
   CheckIn({
     required this.id,
     required this.userId,
     required this.checkInTime,
     this.note = '',
+    this.mood,
   });
 
   Map<String, dynamic> toMap() {
@@ -21,6 +23,7 @@ class CheckIn {
       'userId': userId,
       'checkInTime': checkInTime.toIso8601String(),
       'note': note,
+      'mood': mood,
     };
   }
 
@@ -29,7 +32,8 @@ class CheckIn {
       id: map['id'],
       userId: map['userId'],
       checkInTime: DateTime.parse(map['checkInTime']),
-      note: map['note'] ?? '',
+      note: map['note'],
+      mood: map['mood'],
     );
   }
 }

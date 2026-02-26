@@ -1,188 +1,175 @@
-import 'package:sqflite/sqflite.dart';
-import 'package:path/path.dart';
+import 'dart:convert';
+import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import '../models/user.dart';
 import '../models/todo.dart';
 import '../models/check_in.dart';
 
 // -------------------------------------------------------------------------
-// 知识点：SQLite 数据库封装
+// 知识点：HTTP 服务封装 (替代原 SQLite)
 // -------------------------------------------------------------------------
-// 使用单例模式管理数据库连接，确保全局只有一个数据库实例。
-// 涉及 Tables: users, todos, check_ins
 
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
-  static Database? _database;
+
+  // 根据平台动态选择 URL
+  static String get _baseUrl {
+    if (kIsWeb ||
+        (defaultTargetPlatform == TargetPlatform.windows) ||
+        (defaultTargetPlatform == TargetPlatform.linux) ||
+        (defaultTargetPlatform == TargetPlatform.macOS)) {
+      return 'http://localhost:3000/api';
+    } else if (defaultTargetPlatform == TargetPlatform.android) {
+      return 'http://10.0.2.2:3000/api';
+    } else {
+      return 'http://localhost:3000/api'; // iOS Simulator
+    }
+  }
 
   factory DatabaseService() => _instance;
 
   DatabaseService._internal();
 
-  Future<Database> get database async {
-    if (_database != null) return _database!;
-    _database = await _initDatabase();
-    return _database!;
-  }
+  // 这里的 database getter 已移除，因为不再使用 SQLite
+  // 如果原有代码有初始化调用，请移除或修改
 
-  Future<Database> _initDatabase() async {
-    // 获取标准的数据库路径
-    String path = join(await getDatabasesPath(), 'flutter_advanced_todo.db');
-    
-    return await openDatabase(
-      path,
-      version: 2, // 升级版本号
-      onCreate: _onCreate,
-      onUpgrade: _onUpgrade,
-    );
-  }
-
-  // 数据库升级逻辑
-  Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
-    if (oldVersion < 2) {
-      await db.execute('ALTER TABLE todos ADD COLUMN reminderTime TEXT');
-    }
-  }
-
-  Future<void> _onCreate(Database db, int version) async {
-    // 1. 创建用户表
-    await db.execute('''
-      CREATE TABLE users(
-        id TEXT PRIMARY KEY,
-        username TEXT,
-        password TEXT,
-        createdAt TEXT
-      )
-    ''');
-
-    // 2. 创建任务表
-    await db.execute('''
-      CREATE TABLE todos(
-        id TEXT PRIMARY KEY,
-        userId TEXT,
-        title TEXT,
-        description TEXT,
-        isCompleted INTEGER,
-        createdAt TEXT,
-        reminderTime TEXT,
-        FOREIGN KEY (userId) REFERENCES users (id)
-      )
-    ''');
-
-    
-    // 3. 创建打卡表
-    await db.execute('''
-      CREATE TABLE check_ins(
-        id TEXT PRIMARY KEY,
-        userId TEXT,
-        checkInTime TEXT,
-        note TEXT,
-        FOREIGN KEY (userId) REFERENCES users (id)
-      )
-    ''');
+  // 由于不再需要初始化数据库文件，此方法可留空或移除
+  Future<void> get database async {
+    return;
   }
 
   // ---- User Operations ----
-  Future<void> insertUser(User user) async {
-    final db = await database;
-    await db.insert(
-      'users', 
-      user.toMap(), 
-      conflictAlgorithm: ConflictAlgorithm.replace,
+  Future<User> insertUser(User user) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/auth/register'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'username': user.username, 'password': user.password}),
     );
+
+    if (response.statusCode == 409) {
+      throw Exception('用户已存在');
+    } else if (response.statusCode == 201) {
+      final data = jsonDecode(response.body);
+      // 后端返回了 id, username, createdAt
+      // 我们需要返回一个新的 User 对象，使用后端生成的 ID
+      return User(
+        id: data['id'],
+        username: data['username'],
+        password: user.password, // 后端通常不返回密码，我们使用输入的密码
+        createdAt: DateTime.parse(data['createdAt']),
+      );
+    } else {
+      throw Exception('注册失败: ${response.body}');
+    }
   }
 
   Future<User?> getUser(String username, String password) async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'users',
-      where: 'username = ? AND password = ?',
-      whereArgs: [username, password],
+    final response = await http.post(
+      Uri.parse('$_baseUrl/auth/login'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'username': username, 'password': password}),
     );
-    if (maps.isNotEmpty) {
-      return User.fromMap(maps.first);
+
+    if (response.statusCode == 200) {
+      return User.fromMap(jsonDecode(response.body));
     }
     return null;
   }
-  
+
+  // 模拟检查用户是否存在，实际通过注册接口处理了
   Future<bool> checkUserExists(String username) async {
-    final db = await database;
-    final result = await db.query(
-      'users',
-      where: 'username = ?',
-      whereArgs: [username],
-    );
-    return result.isNotEmpty;
+    // 由于后端没有专门的 check 接口，我们暂时返回 false
+    // 让 insertUser 去触发 409 错误
+    return false;
   }
 
   // ---- Todo Operations ----
-  Future<void> insertTodo(Todo todo) async {
-    final db = await database;
-    await db.insert(
-      'todos', 
-      todo.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
+  Future<Todo> insertTodo(Todo todo) async {
+    final response = await http.post(
+      Uri.parse('$_baseUrl/todos'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(todo.toMap()), // 使用 toMap 自动处理所有字段
     );
+    if (response.statusCode == 201) {
+      final data = jsonDecode(response.body);
+      return Todo.fromJson(data);
+    } else {
+      throw Exception('创建任务失败');
+    }
   }
 
   Future<List<Todo>> getTodos(String userId) async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'todos',
-      where: 'userId = ?',
-      whereArgs: [userId],
-      orderBy: 'createdAt DESC',
+    final response = await http.get(
+      Uri.parse('$_baseUrl/todos?userId=$userId'),
     );
-    return List.generate(maps.length, (i) => Todo.fromMap(maps[i]));
+
+    if (response.statusCode == 200) {
+      final List<dynamic> list = jsonDecode(response.body);
+      return list.map((e) => Todo.fromMap(e)).toList();
+    }
+    return [];
   }
 
   Future<void> updateTodo(Todo todo) async {
-    final db = await database;
-    await db.update(
-      'todos',
-      todo.toMap(),
-      where: 'id = ?',
-      whereArgs: [todo.id],
+    final response = await http.put(
+      Uri.parse('$_baseUrl/todos/${todo.id}'),
+      headers: {'Content-Type': 'application/json'},
+      // 移除 userId 避免后端可能的安全校验问题，只传需要更新的字段
+      body: jsonEncode({
+        'title': todo.title,
+        'description': todo.description,
+        'isCompleted': todo.isCompleted,
+        'reminderTime': todo.reminderTime?.toIso8601String(),
+        'tags': todo.tags,
+        'isFocus': todo.isFocus,
+        'subtasks': todo.subtasks.map((e) => e.toJson()).toList(),
+      }),
     );
+    if (response.statusCode != 200) {
+      throw Exception('更新失败');
+    }
   }
 
   Future<void> deleteTodo(String id) async {
-    final db = await database;
-    await db.delete(
-      'todos',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    final response = await http.delete(Uri.parse('$_baseUrl/todos/$id'));
+    if (response.statusCode != 200) {
+      throw Exception('删除失败');
+    }
   }
 
   // ---- CheckIn Operations ----
   Future<void> insertCheckIn(CheckIn checkIn) async {
-    final db = await database;
-    await db.insert('check_ins', checkIn.toMap());
+    final response = await http.post(
+      Uri.parse('$_baseUrl/check-ins'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(checkIn.toMap()),
+    );
+    if (response.statusCode != 201) {
+      throw Exception('打卡失败');
+    }
   }
 
   Future<List<CheckIn>> getCheckIns(String userId) async {
-    final db = await database;
-    final List<Map<String, dynamic>> maps = await db.query(
-      'check_ins',
-      where: 'userId = ?',
-      whereArgs: [userId],
-      orderBy: 'checkInTime DESC',
+    final response = await http.get(
+      Uri.parse('$_baseUrl/check-ins?userId=$userId'),
     );
-    return List.generate(maps.length, (i) => CheckIn.fromMap(maps[i]));
+
+    if (response.statusCode == 200) {
+      final List<dynamic> list = jsonDecode(response.body);
+      return list.map((e) => CheckIn.fromMap(e)).toList();
+    }
+    return [];
   }
-  
-  // 检查今天是否已打卡
+
   Future<bool> hasCheckedInToday(String userId) async {
-    final db = await database;
-    final date = DateTime.now();
-    final startOfDay = DateTime(date.year, date.month, date.day).toIso8601String();
-    final endOfDay = DateTime(date.year, date.month, date.day, 23, 59, 59).toIso8601String();
-    
-    final result = await db.query(
-      'check_ins',
-      where: 'userId = ? AND checkInTime BETWEEN ? AND ?',
-      whereArgs: [userId, startOfDay, endOfDay],
+    final response = await http.get(
+      Uri.parse('$_baseUrl/check-ins/today?userId=$userId'),
     );
-    return result.isNotEmpty;
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return data['hasCheckedIn'] == true;
+    }
+    return false;
   }
 }

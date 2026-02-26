@@ -17,7 +17,7 @@ class _AuthPageState extends State<AuthPage> {
   final _formKey = GlobalKey<FormState>();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
-  
+
   bool _isLogin = true; // 切换登录/注册模式
 
   @override
@@ -55,6 +55,7 @@ class _AuthPageState extends State<AuthPage> {
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24),
           child: Card(
+            color: Colors.amber[50],
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Form(
@@ -107,9 +108,12 @@ class _AuthPageState extends State<AuthPage> {
                           ),
                           child: auth.isLoading
                               ? const SizedBox(
-                                  width: 20, 
-                                  height: 20, 
-                                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white)
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
                                 )
                               : Text(_isLogin ? '登录' : '注册'),
                         );

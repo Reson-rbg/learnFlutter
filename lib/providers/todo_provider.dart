@@ -59,19 +59,20 @@ class TodoProvider extends ChangeNotifier {
   Future<void> addTodo(Todo todo) async {
     if (_userId == null) return;
     try {
-      await _dbService.insertTodo(todo);
-      
-      // 设置提醒
-      if (todo.reminderTime != null) {
+      final newTodo = await _dbService.insertTodo(todo);
+
+      // 设置提醒 (使用后端生成的 ID，以确保后续删除/修改能正确取消)
+      if (newTodo.reminderTime != null) {
+        // 使用 newTodo 而不是传入的 todo
         await _notificationService.scheduleNotification(
-          todo.id.hashCode,
-          '待办提醒: ${todo.title}',
-          todo.description.isNotEmpty ? todo.description : '记得完成你的任务哦！',
-          todo.reminderTime!,
+          newTodo.id.hashCode,
+          '待办提醒: ${newTodo.title}',
+          newTodo.description.isNotEmpty ? newTodo.description : '记得完成你的任务哦！',
+          newTodo.reminderTime!,
         );
       }
 
-      // 重新加载以确保顺序正确
+      // 重新加载以确保同步
       await loadTodos();
     } catch (e) {
       debugPrint("Add Error: $e");
@@ -85,7 +86,7 @@ class TodoProvider extends ChangeNotifier {
     if (index != -1) {
       final oldTodo = _todos[index];
       final newTodo = oldTodo.copyWith(isCompleted: !oldTodo.isCompleted);
-      
+
       // 如果完成了任务，取消提醒；如果恢复未完成且时间在未来，重设提醒 (简化逻辑：仅取消)
       if (newTodo.isCompleted) {
         await _notificationService.cancelNotification(id.hashCode);
@@ -122,7 +123,56 @@ class TodoProvider extends ChangeNotifier {
     if (query.isEmpty) return _todos;
     return _todos.where((todo) {
       return todo.title.toLowerCase().contains(query.toLowerCase()) ||
-             todo.description.toLowerCase().contains(query.toLowerCase());
+          todo.description.toLowerCase().contains(query.toLowerCase());
     }).toList();
+  }
+
+  // V2 新增功能 ------------------------------
+
+  // 1. 获取今日聚焦任务
+  List<Todo> get focusTodos =>
+      _todos.where((t) => t.isFocus && !t.isCompleted).toList();
+
+  // 2. 根据标签过滤
+  List<Todo> getTodosByTag(String tag) {
+    if (tag == '全部') return _todos;
+    return _todos.where((t) => t.tags.contains(tag)).toList();
+  }
+
+  // 3. 更新任务 (包括标签、Subtask、Focus等通用更新)
+  Future<void> updateTodo(Todo todo) async {
+    final index = _todos.indexWhere((t) => t.id == todo.id);
+    if (index != -1) {
+      final oldTodo = _todos[index];
+      _todos[index] = todo;
+      notifyListeners();
+
+      try {
+        await _dbService.updateTodo(todo);
+      } catch (e) {
+        _todos[index] = oldTodo;
+        notifyListeners();
+        rethrow;
+      }
+    }
+  }
+
+  // 4. toggle Subtask
+  Future<void> toggleSubtask(String todoId, int subtaskIndex) async {
+    final index = _todos.indexWhere((t) => t.id == todoId);
+    if (index == -1) return;
+
+    final todo = _todos[index];
+    if (subtaskIndex >= todo.subtasks.length) return;
+
+    final subtask = todo.subtasks[subtaskIndex];
+    final newSubtasks = List<SubTask>.from(todo.subtasks);
+    newSubtasks[subtaskIndex] = SubTask(
+      title: subtask.title,
+      isCompleted: !subtask.isCompleted,
+    );
+
+    final newTodo = todo.copyWith(subtasks: newSubtasks);
+    await updateTodo(newTodo);
   }
 }

@@ -40,7 +40,7 @@ class AuthProvider extends ChangeNotifier {
   Future<void> login(String username, String password) async {
     _isLoading = true;
     notifyListeners();
-    
+
     await Future.delayed(const Duration(milliseconds: 500)); // 模拟一点延迟
 
     try {
@@ -70,27 +70,30 @@ class AuthProvider extends ChangeNotifier {
   Future<void> register(String username, String password) async {
     _isLoading = true;
     notifyListeners();
-    
+
     await Future.delayed(const Duration(milliseconds: 500));
 
     try {
-      final exists = await _dbService.checkUserExists(username);
-      if (exists) {
-        throw Exception('用户名已存在');
-      }
+      // 移除 checkUserExists，直接依靠 insertUser 抛出异常
+      // final exists = await _dbService.checkUserExists(username);
+      // if (exists) {
+      //   throw Exception('用户名已存在');
+      // }
 
-      final newUser = User(
-        id: const Uuid().v4(),
+      final tempUser = User(
+        id: '', // 临时 ID，后端会生成
         username: username,
         password: password,
         createdAt: DateTime.now(),
       );
 
-      await _dbService.insertUser(newUser);
+      // insertUser 现在返回包含后端 ID 的新 User 对象
+      final registeredUser = await _dbService.insertUser(tempUser);
+
       // 注册后自动登录
-      _currentUser = newUser;
+      _currentUser = registeredUser;
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString('userId', newUser.id);
+      await prefs.setString('userId', registeredUser.id);
     } finally {
       _isLoading = false;
       notifyListeners();

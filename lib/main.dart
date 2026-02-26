@@ -10,13 +10,13 @@ import 'pages/auth_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // 初始化数据库服务
-  await DatabaseService().database; 
+
+  // 初始化数据库服务已移除 (现在使用 HTTP API)
+  // await DatabaseService().database;
 
   // 初始化通知服务
   await NotificationService().init();
-  await NotificationService().requestPermissions(); 
+  await NotificationService().requestPermissions();
 
   runApp(const MyApp());
 }
@@ -30,7 +30,7 @@ class MyApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => ThemeProvider()),
-        
+
         ChangeNotifierProxyProvider<AuthProvider, TodoProvider>(
           create: (_) => TodoProvider(null),
           update: (context, auth, previousTodoProvider) {
